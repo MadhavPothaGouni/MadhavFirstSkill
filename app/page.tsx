@@ -1,27 +1,54 @@
+// app/page.tsx
+import Header from './components/Header'
 import HeroBanner from './components/HeroBanner'
 import MovieRow from './components/MovieRow'
-import { fetchPopular } from '@/lib/tmdb'
+import { fetchPopular, fetchTopRated, fetchMovieTrailerKey } from '@/lib/tmdb'
 import type { Movie } from '@/types/movie'
 
-export default async function Page() {
-  const popular = await fetchPopular()
-  const movies: Movie[] = popular || []
+export default async function Home() {
+  let popular: Movie[] = []
+  let topRated: Movie[] = []
+
+  // Fetch popular movies
+  try {
+    popular = await fetchPopular()
+  } catch (e) {
+    console.error('fetchPopular error', e)
+  }
+
+  // Fetch top rated (or another category)
+  try {
+    topRated = await fetchTopRated()
+  } catch (e) {
+    console.error('fetchTopRated error', e)
+  }
+
+ 
+  const featured: Movie | null =
+    popular.find((m) => m.backdrop_path) ?? popular[0] ?? null
+
+  // Get trailer key for the featured movie
+  let trailerKey: string | null = null
+  if (featured?.id) {
+    try {
+      trailerKey = await fetchMovieTrailerKey(String(featured.id))
+      console.log('Trailer key for featured movie:', trailerKey)
+    } catch (e) {
+      console.error('fetchMovieTrailerKey error', e)
+    }
+  }
 
   return (
-    <div className="space-y-8 py-8">
-      {movies.length > 0 ? (
-        <>
-          <HeroBanner movie={movies[0]} />
-          <MovieRow movies={movies} categoryTitle="Popular" />
-          <MovieRow movies={movies.slice(10, 20)} categoryTitle="More to watch" />
-          <MovieRow movies={movies.slice(20, 30)} categoryTitle="Trending" />
-        </>
-      ) : (
-        <div className="py-12 px-4">
-          <h2 className="text-xl font-semibold">No movies found</h2>
-          <p className="text-gray-300">Check the server terminal for TMDB fetch errors (API key, network).</p>
+    <>
+      <Header />
+      <main className="pt-16 bg-black min-h-screen text-white">
+        <HeroBanner movie={featured} trailerKey={trailerKey} />
+
+        <div className="max-w-[1200px] mx-auto">
+          <MovieRow movies={popular} categoryTitle="Popular" />
+          <MovieRow movies={topRated} categoryTitle="More to watch" />
         </div>
-      )}
-    </div>
+      </main>
+    </>
   )
 }

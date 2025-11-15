@@ -1,11 +1,18 @@
+// next.config.js
 /** @type {import('next').NextConfig} */
 const nextConfig = {
-  turbopack: { root: "./" },
   images: {
     remotePatterns: [
-      { protocol: 'https', hostname: 'image.tmdb.org', pathname: '/t/p/**' }
-    ]
-  }
+      {
+        protocol: 'https',
+        hostname: 'image.tmdb.org',
+        pathname: '/**',
+      },
+    ],
+  },
+  experimental: {
+    // keep other experimental flags you already use
+  },
 }
 
 module.exports = nextConfig

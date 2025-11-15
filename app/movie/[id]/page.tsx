@@ -1,156 +1,235 @@
-// app/movie/[id]/page.tsx
-'use client'
-
-import React, { useEffect, useState } from 'react'
-import { useParams } from 'next/navigation'
-import Link from 'next/link'
 import Image from 'next/image'
+import Link from 'next/link'
+import { fetchMovieById, fetchMovieTrailerKey } from '@/lib/tmdb'
+import type { Movie } from '@/types/movie'
 
-type Genre = { id: number; name: string }
-
-type Movie = {
-  id: number
-  title: string
-  poster_path?: string | null
-  backdrop_path?: string | null
-  overview?: string | null
-  release_date?: string | null
-  genres?: Genre[]
-  runtime?: number | null
-  vote_average?: number | null
-  homepage?: string | null
+type PageProps = {
+  params: Promise<{ id?: string }>
 }
 
-export default function MoviePageClient() {
-  const params = useParams()
-  const id = params?.id
-
-  // If id exists -> undefined = loading. If no id -> null = invalid immediately (no fetch).
-  const initialState: Movie | null | undefined = id ? undefined : null
-  const [movie, setMovie] = useState<Movie | null | undefined>(initialState)
-
-  // Hooks must be called unconditionally and in the same order
-  useEffect(() => {
-    // if there's no id, do nothing (we already set initial state to null)
-    if (!id) return
-
-    const ctrl = new AbortController()
-    let mounted = true
-
-    async function load() {
-      try {
-        // show loading state
-        setMovie(undefined)
-        const res = await fetch(`/api/movie/${id}`, { signal: ctrl.signal })
-        if (!mounted) return
-        if (!res.ok) {
-          setMovie(null)
-          return
-        }
-        const json = (await res.json()) as Movie
-        setMovie(json)
-      } catch (err) {
-        // If the fetch was aborted, ignore
-        if (err instanceof DOMException && err.name === 'AbortError') {
-          return
-        }
-        // eslint-disable-next-line no-console
-        console.error('Client fetch error for movie:', err)
-        setMovie(null)
-      }
-    }
-
-    load()
-    return () => {
-      mounted = false
-      ctrl.abort()
-    }
-  }, [id])
-
-  // Now safe to early-return UI based on id or movie state
+export default async function MoviePage({ params }: PageProps) {
+  const { id } = await params
   if (!id) {
     return (
-      <div className="py-8">
+      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center">
         <h1 className="text-2xl font-bold mb-4">Invalid movie</h1>
-        <p className="text-gray-300">No movie id was provided in the URL.</p>
-        <Link href="/" className="inline-block mt-4 underline">
-          ← Back
+        <p className="text-gray-300 mb-4">No movie id was provided in the URL.</p>
+        <Link href="/" className="underline text-sm">
+          ← Back to home
         </Link>
       </div>
     )
   }
 
-  if (movie === undefined) {
-    return (
-      <div className="py-8">
-        <p>Loading...</p>
-      </div>
-    )
+  let movie: Movie | null = null
+  let trailerKey: string | null = null
+
+  try {
+    movie = (await fetchMovieById(id)) as Movie
+  } catch (err) {
+    console.error('MoviePage fetchMovieById error for id=', id, err)
   }
 
-  if (movie === null) {
+  if (movie?.id) {
+    try {
+      trailerKey = await fetchMovieTrailerKey(movie.id)
+    } catch (err) {
+      console.error('MoviePage fetchMovieTrailerKey error for id=', id, err)
+    }
+  }
+
+  // If fetch failed or TMDB returned nothing
+  if (!movie) {
     return (
-      <div className="py-8">
-        <Link href="/" className="inline-block mb-4 text-sm underline">
-          ← Back
-        </Link>
+      <div className="min-h-screen bg-black text-white flex flex-col items-center justify-center">
         <h1 className="text-2xl font-bold mb-4">Movie details unavailable</h1>
-        <p className="text-gray-300">We could not load movie details right now.</p>
+        <p className="text-gray-300 mb-4">
+          We could not load movie details right now. Please try again later.
+        </p>
+        <Link href="/" className="underline text-sm">
+          ← Back to home
+        </Link>
       </div>
     )
   }
+
+  const backdropUrl = movie.backdrop_path
+    ? `https://image.tmdb.org/t/p/original${movie.backdrop_path}`
+    : movie.poster_path
+      ? `https://image.tmdb.org/t/p/original${movie.poster_path}`
+      : null
+
+  const runtimeHours = movie.runtime ? Math.floor(movie.runtime / 60) : null
+  const runtimeMinutes = movie.runtime ? movie.runtime % 60 : null
+  const primaryLanguage = movie.spoken_languages?.[0]?.english_name ?? 'Unknown'
 
   return (
-    <div className="py-8">
-      <Link href="/" className="inline-block mb-4 text-sm underline">
-        ← Back
-      </Link>
+    <div className="min-h-screen bg-black text-white">
+      {/* Hero section */}
+      <section className="relative h-[70vh] w-full overflow-hidden">
+        {backdropUrl ? (
+          <Image
+            src={backdropUrl}
+            alt={movie.title ?? 'Movie backdrop'}
+            fill
+            priority
+            className="object-cover"
+          />
+        ) : (
+          <div className="absolute inset-0 bg-gradient-to-br from-gray-900 to-black" />
+        )}
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Poster */}
-        <div className="md:col-span-1">
-          {movie.poster_path ? (
-            <div className="relative w-full h-96 rounded overflow-hidden">
-              <Image
-                src={`https://image.tmdb.org/t/p/w500${movie.poster_path}`}
-                alt={movie.title ?? 'poster'}
-                fill
-                style={{ objectFit: 'cover' }}
-                priority
-              />
-            </div>
-          ) : (
-            <div className="w-full h-96 bg-gray-800 flex items-center justify-center">No image</div>
-          )}
+        {/* Dark gradient overlay */}
+        <div className="absolute inset-0 bg-gradient-to-t from-black via-black/70 to-black/20" />
+
+        {/* Top nav (mini) */}
+        <div className="absolute top-0 left-0 right-0 flex items-center justify-between px-6 md:px-10 py-4 text-sm text-gray-200">
+          <Link href="/" className="font-semibold tracking-[0.2em] uppercase text-xs md:text-sm">
+            Streaming
+          </Link>
+          <span className="text-xs md:text-sm text-gray-300">Movie details</span>
         </div>
 
-        {/* Details */}
-        <div className="md:col-span-2">
-          <h1 className="text-3xl font-bold mb-2">{movie.title}</h1>
+        {/* Hero content */}
+        <div className="relative z-10 max-w-5xl mx-auto px-6 md:px-10 h-full flex items-end pb-16">
+          <div className="flex flex-col md:flex-row md:items-end gap-6 md:gap-10 w-full">
+            {/* Optional poster on large screens */}
+            {movie.poster_path && (
+              <div className="hidden md:block w-40 lg:w-52 flex-shrink-0 rounded-lg overflow-hidden shadow-xl shadow-black/60 border border-white/10">
+                <Image
+                  src={`https://image.tmdb.org/t/p/w500${movie.poster_path}`}
+                  alt={movie.title ?? 'Poster'}
+                  width={340}
+                  height={510}
+                  className="h-full w-full object-cover"
+                />
+              </div>
+            )}
 
-          <div className="flex items-center gap-4 text-sm text-gray-400 mb-4">
-            {movie.release_date && <span>{movie.release_date}</span>}
-            {movie.runtime ? <span>· {movie.runtime} min</span> : null}
-            {typeof movie.vote_average === 'number' ? <span>· ⭐ {movie.vote_average}</span> : null}
+            {/* Text details */}
+            <div className="space-y-3 md:space-y-4">
+              <h1 className="text-3xl md:text-5xl lg:text-6xl font-extrabold drop-shadow-xl">
+                {movie.title}
+              </h1>
+
+              {movie.tagline && (
+                <p className="text-sm md:text-base text-gray-200 italic">{movie.tagline}</p>
+              )}
+
+              {/* Meta row */}
+              <div className="flex flex-wrap items-center gap-2 text-xs md:text-sm text-gray-200">
+                {movie.release_date && (
+                  <span>{movie.release_date.replace(/-/g, ' · ')}</span>
+                )}
+
+                {movie.runtime && (
+                  <span>
+                    {runtimeHours}h {runtimeMinutes}m
+                  </span>
+                )}
+
+                {typeof movie.vote_average === 'number' && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/15 text-xs md:text-sm">
+                    ⭐ {movie.vote_average.toFixed(1)}
+                    {movie.vote_count ? (
+                      <span className="text-[10px] md:text-xs text-gray-300">
+                        ({Math.round(movie.vote_count / 100) / 10}k votes)
+                      </span>
+                    ) : null}
+                  </span>
+                )}
+
+                <span className="px-2 py-0.5 rounded-full border border-white/30 text-[10px] md:text-xs">
+                  Lang: {primaryLanguage}
+                </span>
+
+                {movie.status && (
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-600/70 text-[10px] md:text-xs font-semibold">
+                    {movie.status}
+                  </span>
+                )}
+              </div>
+
+              {/* Buttons */}
+              <div className="flex flex-wrap items-center gap-3 pt-2">
+                <Link
+                  href={`/movie/${movie.id}`}
+                  className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-md bg-white text-black font-semibold text-sm md:text-base hover:bg-gray-200 hover:scale-[1.03] transition-transform"
+                >
+                  ▶ Play
+                </Link>
+
+                {trailerKey && (
+                  <a
+                    href={`https://www.youtube.com/watch?v=${trailerKey}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-md bg-white/10 text-white border border-white/40 font-medium text-sm md:text-base hover:bg-white/20 transition"
+                  >
+                    Watch trailer on YouTube
+                  </a>
+                )}
+
+                {movie.homepage && (
+                  <a
+                    href={movie.homepage}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs md:text-sm underline text-gray-200 hover:text-white"
+                  >
+                    Official site
+                  </a>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Content section */}
+      <main className="max-w-5xl mx-auto px-6 md:px-10 py-10 space-y-10">
+        {/* Overview */}
+        <section className="space-y-3">
+          <h2 className="text-xl md:text-2xl font-semibold">Overview</h2>
+          <p className="text-sm md:text-base text-gray-200 leading-relaxed">{movie.overview}</p>
+        </section>
+
+        {/* Extra details grid */}
+        <section className="grid grid-cols-1 sm:grid-cols-2 gap-6 text-sm text-gray-200">
+          <div className="space-y-1">
+            <h3 className="text-xs uppercase tracking-wide text-gray-400">Genres</h3>
+            <p>{movie.genres?.map((g) => g.name).join(' · ') || '—'}</p>
           </div>
 
-          {movie.genres && movie.genres.length > 0 && (
-            <p className="text-sm mb-4">
-              <strong>Genres:</strong> {movie.genres.map((g) => g.name).join(', ')}
+          <div className="space-y-1">
+            <h3 className="text-xs uppercase tracking-wide text-gray-400">Spoken languages</h3>
+            <p>
+              {movie.spoken_languages?.map((l) => l.english_name || l.name).join(' · ') || '—'}
             </p>
-          )}
+          </div>
 
-          <p className="max-w-3xl mb-6">{movie.overview}</p>
-
-          {movie.homepage && (
-            <p className="mt-4">
-              <a href={movie.homepage} target="_blank" rel="noreferrer" className="underline text-sm">
-                Visit official site
-              </a>
+          <div className="space-y-1">
+            <h3 className="text-xs uppercase tracking-wide text-gray-400">Production countries</h3>
+            <p>
+              {movie.production_countries?.map((c) => c.name).join(' · ') || '—'}
             </p>
-          )}
-        </div>
-      </div>
+          </div>
+
+          <div className="space-y-1">
+            <h3 className="text-xs uppercase tracking-wide text-gray-400">Production companies</h3>
+            <p>
+              {movie.production_companies?.map((c) => c.name).join(' · ') || '—'}
+            </p>
+          </div>
+        </section>
+
+        {/* Back link */}
+        <section className="pt-4">
+          <Link href="/" className="underline text-sm text-gray-300 hover:text-white">
+            ← Back to home
+          </Link>
+        </section>
+      </main>
     </div>
   )
 }
