@@ -1,18 +1,16 @@
-import { NextResponse } from 'next/server'
+// app/api/movie/[id]/route.ts
+import { NextResponse, type NextRequest } from 'next/server'
 
 const BASE = 'https://api.themoviedb.org/3'
 const API_KEY = process.env.TMDB_API_KEY
 
-type RouteParams = {
-  params: {
-    id?: string
-  }
+type Context = {
+  params: Promise<{ id: string }>
 }
 
-export async function GET(_req: Request, { params }: RouteParams) {
-  const id = params?.id
-
+export async function GET(_req: NextRequest, context: Context) {
   try {
+    const { id } = await context.params
     console.log('[api/movie] GET called, id =', id)
 
     if (!id) {
@@ -26,7 +24,7 @@ export async function GET(_req: Request, { params }: RouteParams) {
     if (!API_KEY) {
       console.error('[api/movie] Missing TMDB_API_KEY in process.env')
       return NextResponse.json(
-        { error: 'Missing TMDB API key on server' },
+        { error: 'Missing TMDB API KEY' },
         { status: 500 }
       )
     }
@@ -34,27 +32,12 @@ export async function GET(_req: Request, { params }: RouteParams) {
     const url = `${BASE}/movie/${id}?api_key=${API_KEY}&language=en-US`
     console.log('[api/movie] Fetching TMDB URL =', url)
 
-    const res = await fetch(url, {
-      cache: 'no-store',
-    })
-
+    const res = await fetch(url, { cache: 'no-store' })
     console.log('[api/movie] TMDB response status =', res.status)
 
     if (!res.ok) {
-      let bodyText = ''
-      try {
-        bodyText = await res.text()
-      } catch {
-        bodyText = '[could not read body]'
-      }
-
-      console.error(
-        '[api/movie] TMDB responded non-OK:',
-        res.status,
-        bodyText
-      )
-
-      // propagate TMDB status code to client so you can debug from browser
+      const text = await res.text().catch(() => '[no body]')
+      console.error('[api/movie] TMDB responded non-OK:', res.status, text)
       return NextResponse.json(
         { error: 'TMDB request failed', status: res.status },
         { status: res.status }
