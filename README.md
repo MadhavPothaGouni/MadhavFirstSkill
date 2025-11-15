@@ -92,7 +92,7 @@ npm install
 
 Create an .env.local file in the project root and add:
 
-TMDB_API_KEY=your_api_key_here
+TMDB_API_KEY=2c6048eb582f9c006bed50fc3ddfae51
 
 
 Start the development server
